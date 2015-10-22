@@ -3,6 +3,7 @@ import config from './configuration';
 import stdin from './stdin';
 import GithubAPI from './GithubAPI';
 let debug = require('debug')('debug')
+let csv = require('to-csv');
 
 class Application {
   constructor(config) {
@@ -41,11 +42,10 @@ https://github.com/brettwejrowski`;
    * Build a hash of users with their profile
    */
   getUserProfiles(userList) {
-    return new Promise(function (resolve, reject) {
+    return new Promise((resolve, reject) => {
       userList.forEach((user) => {
-
         this.api.getUserProfile(user)
-          .then(function (profile) {
+          .then((profile) => {
             this.users[user] = {
               profile,
               // Emails will be in this form
@@ -75,21 +75,31 @@ https://github.com/brettwejrowski`;
     return new Promise((resolve, reject) => {
       let usersWithFoundEmails = 0;
       let totalUsers = Object.keys(this.users).length;
-      let storeEmail = (userName, email) => {
-        this.users[userName].emails.push(email);
+
+      let storeEmail = (username, email) => {
+        this.users[username].emails.push(email);
+        tick();
+      }
+
+      let storeEmails = (username, emails) => {
+        this.users[username].emails = emails;
+        tick();
+      }
+
+      let tick = () => {
         usersWithFoundEmails++;
         debug(`hunting: ${usersWithFoundEmails}/${totalUsers}`);
 
-        if (usersWithFoundEmails === this.users.length) {
+        if (usersWithFoundEmails === totalUsers) {
           resolve();
         }
       }
 
-      Object.keys(this.users).forEach((userName) => {
-        let user = this.users[userName];
+      Object.keys(this.users).forEach((username) => {
+        let user = this.users[username];
 
         if (user.profile.email) {
-          storeEmail(userName, {
+          storeEmail(username, {
             email: user.profile.email,
             meta: {
               rank: 1,
@@ -99,13 +109,11 @@ https://github.com/brettwejrowski`;
           });
         } else {
           // Search for users repositories
-          this.api.getUserRepositories(userName)
-            .then(this.getCommitsForRepositories(userName))
+          this.api.getUserRepositories(username)
+            .then(this.getCommitsForRepositories(username))
             .then(this.huntForEmailInCommits.bind(this))
-            .then(function () {
-              emails.forEach(function (emailDatum) {
-                storeEmail(userName, emailDatum);
-              });
+            .then(function (emails) {
+              storeEmails(username, emails);
             });
         }
       });
@@ -114,7 +122,7 @@ https://github.com/brettwejrowski`;
 
   getCommitsForRepositories(username) {
     // Use a closure to store what username we're targeting
-    return function (repositories) {
+    return (repositories) => {
       return new Promise((resolve, reject) => {
         let data = {};
 
@@ -124,7 +132,7 @@ https://github.com/brettwejrowski`;
               data[repo.full_name] = commits;
 
               let dataLength = Object.keys(data).length;
-              debug(`profiles: ${dataLength}/${repositories.length}`);
+              debug(`commits: ${dataLength}/${repositories.length}`);
 
               // Resolve once we got all we need
               if (Object.keys(data).length === repositories.length) {
@@ -136,31 +144,86 @@ https://github.com/brettwejrowski`;
     }
   }
 
-  huntForEmailInCommits(commits) {
+  huntForEmailInCommits(repos) {
     return new Promise((resolve, reject) => {
+      let emailsFound = {}; // Hashmap for easy lookups
       let emailsData = [];
-      Object.keys(commits).forEach((repo) => {
-        let datum = commits[repo];
-        let comit = datum.comit;
-        let committer = datum.committer;
 
-        if (commit.committer &&
-          commit.committer.email &&
-          this.users[committer.login]
-        ) {
-          emailsData.push({
-            email: commit.committer.email,
-            meta: {
-              rank: 3,
-              source: datum.html_url,
-              name: commit.committer.name
-            }
-          });
-        }
+      Object.keys(repos).forEach((repo) => {
+        // A datum is a commit for the given repo
+        repos[repo].forEach((datum) => {
+          let commit = datum.commit;
+          let committer = datum.committer;
+
+          if (commit.committer &&
+            commit.committer.email &&
+            this.users[committer.login] &&
+            emailsFound[commit.committer.email] == null
+          ) {
+            emailsFound[commit.committer.email] = true;
+            emailsData.push({
+              email: commit.committer.email,
+              meta: {
+                rank: 3,
+                source: repo,
+                name: commit.committer.name
+              }
+            });
+          }
+        });
       });
 
       resolve(emailsData);
     });
+  }
+
+  printResults() {
+    let maxEmails = 5;
+    let data = [];
+
+    Object.keys(this.users).forEach((username) => {
+      let user = this.users[username];
+
+      let datum = {
+        username,
+        name: user.profile.name,
+        company: user.profile.company,
+        website: user.profile.blog,
+        location: user.profile.location,
+        hireable: user.profile.hireable,
+        github: user.profile.html_url
+      };
+
+      user.emails.forEach(function (email, i) {
+        if (i >= maxEmails) {
+          return;
+        }
+
+        datum[`email${i}`] = email.email;
+        datum[`email${i}_source`] = email.source;
+        datum[`email${i}_name`] = email.name;
+      });
+
+      data.push(datum);
+    });
+
+    let fields = [
+      {name: 'username', label: 'username', quoted: true},
+      {name: 'name', label: 'Name', quoted: true},
+      {name: 'company', label: 'Company', quoted: true},
+      {name: 'website', label: 'Website'},
+      {name: 'location', label: 'Location', quoted: true},
+      {name: 'hireable', label: 'Hireable'},
+      {name: 'github', label: 'Github'}
+    ];
+
+    for (var i = 0; i < maxEmails; i++) {
+      fields.push({name: `email${i}`, label: `Email ${i}`});
+      fields.push({name: `email${i}_source`, label: `Email ${i} Source`});
+      fields.push({name: `email${i}_name`, label: `Email ${i} Name`});
+    };
+
+    console.log(csv(data));
   }
 
   run() {
@@ -168,9 +231,7 @@ https://github.com/brettwejrowski`;
       .then(this.getUserListFromUrls.bind(this))
       .then(this.getUserProfiles.bind(this))
       .then(this.goHunting.bind(this))
-      .then(() => {
-        console.log(this.users);
-      });
+      .then(this.printResults.bind(this));
   }
 }
 

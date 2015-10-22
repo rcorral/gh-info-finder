@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import request from 'request';
+let debug = require('debug')('debug')
 
 class GithubAPI {
   constructor (token) {
@@ -8,7 +9,7 @@ class GithubAPI {
   }
 
   bindFunctions() {
-    ['request', 'requestOpenPRs', 'getPR', 'addAssigneeToPR', 'comment']
+    ['request', 'getUserProfile', 'getUserRepositories', 'getCommitsForRepo']
       .forEach(function (key) {
       if (typeof this[key] === 'function') {
         this[key] = this[key].bind(this);
@@ -39,7 +40,6 @@ class GithubAPI {
   }
 
   getUserProfile(user) {
-    console.log(user);
     return this.request(`/users/${user}`);
   }
 
@@ -48,7 +48,7 @@ class GithubAPI {
   }
 
   getCommitsForRepo(repo, options = {}) {
-    let url = `/repos/${repo}`;
+    let url = `/repos/${repo}/commits`;
 
     if (options.author) {
       url += `?author=${options.author}`;
