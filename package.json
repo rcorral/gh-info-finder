@@ -6,9 +6,9 @@
   "dependencies": {
     "babel": "^5.8.23",
     "debug": "^2.2.0",
-    "json-csv": "^1.0.5",
     "lodash": "^3.10.1",
-    "request": "^2.65.0"
+    "request": "^2.65.0",
+    "to-csv": "^0.1.0"
   },
   "devDependencies": {},
   "scripts": {

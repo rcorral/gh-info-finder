@@ -4,6 +4,7 @@ import stdin from './stdin';
 import GithubAPI from './GithubAPI';
 let debug = require('debug')('debug')
 let csv = require('to-csv');
+let fs = require('fs');
 
 class Application {
   constructor(config) {
@@ -14,11 +15,9 @@ class Application {
   requestUrls() {
     return new Promise(function (resolve, reject) {
       let message = "Enter Github user urls ([enter] submits):\n";
-      let data = `https://github.com/jwngr
-https://github.com/brettwejrowski`;
-      // stdin.read(message, function (data) {
+      stdin.read(message, function (data) {
         resolve(data);
-      // });
+      });
     });
   }
 
@@ -31,9 +30,9 @@ https://github.com/brettwejrowski`;
         return url.replace(/https:\/\/github.com\//, '').trim();
       });
 
-      users = _.compact(users);
+      users = _.uniq(_.compact(users));
 
-      debug('found users', users);
+      debug('found users');
       resolve(users);
     });
   }
@@ -43,7 +42,7 @@ https://github.com/brettwejrowski`;
    */
   getUserProfiles(userList) {
     return new Promise((resolve, reject) => {
-      userList.forEach((user) => {
+      let getUserProfile = (user) => {
         this.api.getUserProfile(user)
           .then((profile) => {
             this.users[user] = {
@@ -63,6 +62,16 @@ https://github.com/brettwejrowski`;
               resolve();
             }
           });
+      };
+
+      let counter = 0;
+      userList.forEach((user) => {
+        if (counter % 15 === 0 && counter !== 0) {
+          // Delay every 15 users
+          setTimeout(getUserProfile.bind(this, user), 5000);
+        } else {
+          getUserProfile(user);
+        }
       });
     });
   }
@@ -200,30 +209,24 @@ https://github.com/brettwejrowski`;
         }
 
         datum[`email${i}`] = email.email;
-        datum[`email${i}_source`] = email.source;
-        datum[`email${i}_name`] = email.name;
+        datum[`email${i}_source`] = email.meta.source;
+        datum[`email${i}_name`] = email.meta.name;
       });
 
       data.push(datum);
     });
 
-    let fields = [
-      {name: 'username', label: 'username', quoted: true},
-      {name: 'name', label: 'Name', quoted: true},
-      {name: 'company', label: 'Company', quoted: true},
-      {name: 'website', label: 'Website'},
-      {name: 'location', label: 'Location', quoted: true},
-      {name: 'hireable', label: 'Hireable'},
-      {name: 'github', label: 'Github'}
-    ];
+    let fileContents = csv(data);
+    let filePath = `${__dirname}/user-data.csv`;
 
-    for (var i = 0; i < maxEmails; i++) {
-      fields.push({name: `email${i}`, label: `Email ${i}`});
-      fields.push({name: `email${i}_source`, label: `Email ${i} Source`});
-      fields.push({name: `email${i}_name`, label: `Email ${i} Name`});
-    };
+    fs.writeFile(filePath, fileContents, function(err) {
+      if (err) {
+        return console.log(err);
+      }
 
-    console.log(csv(data));
+      debug('Success!');
+      console.log(filePath);
+    });
   }
 
   run() {
