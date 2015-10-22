@@ -3,3 +3,5 @@
 /src/user-data.csv
 
 /node_modules/
+
+/src/configuration.js
