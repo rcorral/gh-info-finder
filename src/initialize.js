@@ -69,6 +69,7 @@ class Application {
         if (counter % 15 === 0 && counter !== 0) {
           // Delay every 15 users
           setTimeout(getUserProfile.bind(this, user), 5000);
+          counter++;
         } else {
           getUserProfile(user);
         }
@@ -196,11 +197,13 @@ class Application {
       let datum = {
         username,
         name: user.profile.name,
+        first_name: user.profile.name.split(' ')[0],
         company: user.profile.company,
         website: user.profile.blog,
         location: user.profile.location,
         hireable: user.profile.hireable,
-        github: user.profile.html_url
+        github: user.profile.html_url,
+        personal_blurb: ''
       };
 
       user.emails.forEach(function (email, i) {
